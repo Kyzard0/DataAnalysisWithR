@@ -1,0 +1,10 @@
+name: Publish Document
+title:
+username:
+account: rpubs
+server: rpubs.com
+hostUrl: rpubs.com
+appId: https://api.rpubs.com/api/v1/document/680981/a40daf690e884fc7a14d3280cc03a4ae
+bundleId: https://api.rpubs.com/api/v1/document/680981/a40daf690e884fc7a14d3280cc03a4ae
+url: http://rpubs.com/Kyzard0/680981
+when: 1603584996.16414

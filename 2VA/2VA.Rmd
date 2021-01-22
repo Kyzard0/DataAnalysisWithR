@@ -1,0 +1,141 @@
+---
+title: "2VA - Análise de Dados"
+author: "Diego Rafael"
+date: "23/10/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# 2 VA {.tabset}
+
+## VADeaths
+
+```{r VADeaths, include=TRUE}
+colors <- c("green", "blue", "yellow", "orange", "red")
+barplot(VADeaths,
+        main="Taxa de Mortes em Virginia (1940)",
+        xlab="Categoria",ylab="Taxa de Mortalidade",
+        col=colors,
+        beside = F)
+legend("topright", pch=c(15,15,15,15), col=colors, legend=row.names(VADeaths))
+```
+
+## ClassificaçãoDoença
+
+```{r ClassificaçãoDoença, include=TRUE}
+dados <- c("moderado", "leve", "leve", "severo", "leve", "moderado", "moderado", "moderado", "leve", "leve", "severo","leve", "moderado", "moderado", "leve", "severo", "moderado", "moderado", "moderado","leve")
+dados <- as.data.frame(table(dados))
+pct <- round(dados$Freq/sum(dados$Freq)*100) # Calcula porcentagem de vendas
+lbls <- paste(pct, "%", sep="") #Adiciona % no final dos valores
+pie(dados$Freq,
+    lbls,
+    main="Porcentagem de Casos da Doença por Estágio",
+    col = c("yellow","purple","grey"))
+legend("topleft",
+       legend=dados$dados,
+       pch=15,
+       col=c("yellow","purple","grey"))
+```
+
+## Twitters
+```{r include=FALSE}
+library(tm)
+library(wordcloud)
+library(twitteR)
+library(syuzhet)
+
+# Autentica API do Twitter
+consumer_key <- 'ijoshXZ38K6aZWOu5Mu9icHOm'
+consumer_secret <- 'GA7n7Ltx7yDwTSBFOMzspEN9RGBIup0AUOG4ijkXlqoaXNmUDQ'
+access_token <- '1616525624-ZiKHRhHKUjella6iGdrya4BLIJyBSzXBEJQIaff'
+access_secret <- '9RcdboV4utBeZT6h5LRyXkuwGgSXsUKVmEgRjpOw6pEVC'
+setup_twitter_oauth(consumer_key, consumer_secret, access_token, access_secret)
+
+```
+
+```{r Twitters, echo=TRUE, message=FALSE, warning=FALSE}
+
+#Carrega os tweets
+tweets <- searchTwitter("#racismo", n=500, lang = "pt")
+tweets <- twListToDF(tweets)
+tweets_t <- paste(tweets$text, collapse = " ")
+tweets <- tweets$text
+
+#Cria o corpus
+tweets_S <- VectorSource(tweets_t)
+corpus <- Corpus(tweets_S)
+
+# Limpa os textos
+corpus <- tm_map(corpus, tolower) #Coloca para minúsculo
+corpus <- tm_map(corpus, removePunctuation) #Remove pontuação
+corpus <- tm_map(corpus, removeNumbers) #Remove números
+corpus <- tm_map(corpus, stripWhitespace) #Remove espaços em brancos extras
+corpus <- tm_map(corpus, removeWords, stopwords('portuguese'))
+
+#Remove URLs
+removeURL <- function(x) gsub("http[^[:space:]]*", "", x)
+corpus <- tm_map(corpus, removeURL)
+
+#Normaliza ascii
+removeNumPunct <- function(x) gsub("[^[:alpha:][:space:]]*", "", x)
+corpus <- tm_map(corpus, content_transformer(removeNumPunct))
+
+#Cria a matriz dos textos
+dtm <- TermDocumentMatrix(corpus)
+dtm <- as.matrix(dtm)
+
+#Obtém frequência das palavras
+fre <- sort(rowSums(dtm), decreasing = T)
+
+#Cria nuvem de palavras
+wordcloud(corpus, min.freq = 1, max.words = 100, random.order = F,
+          rot.per = 0.35, colors = brewer.pal(8, "Dark2"))
+
+#Pontua os tweets para análise de sentimentos
+s <- get_nrc_sentiment(tweets)
+
+#Plota gráfico dos sentimentos
+barplot(colSums(s), las=2, col = rainbow(10),
+        ylab = "Quantidade", main="Pontuação de Sentimentos para os Tweets de Racismo")
+
+
+```
+
+## Teorema
+
+```{r Teorema, include=TRUE}
+flu <- read.csv("flu.csv")
+
+dens = density(flu$age) #Densidade
+hist(flu$age,
+     col="grey",
+     main = "Histograma das Idades das mortes da epidemia da Gripe Espanhola ",
+     xlab="Idade",
+     ylab="Frequência",
+     probability = T)
+lines(dens)
+
+n <- 200
+TamMedia <- 35
+xbar <- rep(NA, n)
+#Cria o vetor de médias das 200 amostras
+for(i in 1:n){
+  MinhaAmostra <- sample(flu$age, size = TamMedia)
+  xbar[i] <- mean(MinhaAmostra)
+}
+
+dens = density(xbar) #Densidade
+hist(xbar,
+     col="grey",
+     main = "Histograma das Médias de 200 amostras da epidemia da Gripe Espanhola",
+     xlab="Idade",
+     ylab="Frequência",
+     probability = T)
+lines(dens)
+```
+
+
+

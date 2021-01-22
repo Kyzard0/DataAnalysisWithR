@@ -1,0 +1,404 @@
+---
+title: "Análise e Predição de Preços do Airbnb de Nova York"
+author: "Diego Rafael Ferreira de Souza"
+date: "22/10/2020"
+output:
+  html_document:
+    theme: sandstone
+    highlight: tango
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(knitr)
+library(dplyr)
+library(ggplot2)
+library(ggcorrplot)
+library(chemCal)
+library(visreg)
+library(DT)
+```
+
+# Projeto - Análise de Dados {.tabset .tabset-fade}
+
+## Introdução
+![](airbnb.jpg)
+
+O Airbnb é um serviço online comunitário criado em 2008 em que as pessoas podem anunciar, descobrir e reservar acomodações e meios de hospedagem. Ele permite que as pessoas alugem uma casa inteira ou parte dela, como uma forma de acomodação extra. Este tipo de serviço tem se tornado cada vez mais utilizado, pricipalmente porque os valores acabam sendo bem mais baratos que uma diária de hotel ou pousada, já que só é pago o valor do aluguel do imóvel e não pela quantidade de pessoas. Em apenas quatro anos desde sua criação mais de 10 milhões de reservas foram agendadas via Airbnb.
+
+Este serviço está presente em quase o mundo inteiro, tornando o planejamento de viagens mais fácil e expandindo as possibilidades de turismo. Os dados que serão abordados neste projeto serão da cidade de Nova York, uma cidade muito conhecida mundialmente que está presente em muitos filmes e séries norte-americanas e acaba sendo o primeiro contato com o ambiente norte-americano e é a porta de entrada que muitos têm o sonho de conhecer nos Estados Unidos.
+
+Este projeto busca realizar uma análise explanatória dos dados do Aibnb de Nova York no ano 2019, afim de obter informações relevantes sobre os preços dos alugúeis e quais características têm o maior impacto sobre eles, além disso também será treinado um modelo para predição dos preços utilizando o método de regressão linear. Com o resultado dessas análises será possível auxiliar no planejamento de viagem das pessoas que desejam conhecer Nova York.
+
+## Pacotes requeridos
+
+```{r Pacotes, echo=FALSE}
+pacotes <- data.frame(Pacotes = c("library(knitr)", "library(dplyr)", "library(ggplot2)", "library(ggcorrplot)", "library(visreg)", "library(DT)"),
+                      Descrição = c("Geração de Tabelas", "Manipulação de Dataframes", "Visualização de Dados", "Visualização de Matriz de Correlação", "Visualização de Modelos de Regressão", "Geração de Tabelas"))
+kable(pacotes)
+```
+
+## Preparação dos dados {.tabset}
+
+### Base de dados
+A base de dados foi obtida a partir de dados abertos do Airbnb e está disponibilizada neste [link]("https://www.kaggle.com/dgomonov/new-york-city-airbnb-open-data"). A base consiste em 48895 aluguéis disponibilizados na plataforma do Airbnb para a cidade de Nova York no ano de 2019 e contém as informações sobre o título da postagem, nome do anfitrião, localização, bairro, tipo de quarto, preço, quantidade de noites mínimas para o aluguel e entre outras como mostra a tabela abaixo.
+
+
+Alguns dados vieram vazios e foram substituídos por NA na hora de carregar a base.
+```{r dataset, warning=FALSE}
+dataset <- read.csv("AB_NYC_2019.csv", na.strings=c("","NA"))
+datatable(head(dataset), style = "bootstrap4")
+```
+```{r tabela, echo=FALSE}
+descricao <- c("ID da Postagem",
+  "Título da Postagem",
+  "ID do Anfitrião",
+  "Nome do Anfitrião",
+  "Burgo (Grupo de Bairros)",
+  "Bairro",
+  "Latitude",
+  "Longitude",
+  "Tipo de Aluguel",
+  "Preço em dólares",
+  "Noites Mínimas",
+  "Número de reviews",
+  "Data do último review",
+  "Quantidade de reviews por mês",
+  "Quantidade de aluguéis feitos pelo anfitrião",
+  "Quantidade de dias disponíveis durante o ano")
+tabela <- data.frame(Parâmentros = colnames(dataset), Descrição = descricao)
+kable(tabela)
+```
+
+### Tratamento dos Dados
+
+Aqui vamos tratar os dados para que possamos utilizar na análise, salientando que nem todos os tratamentos serão feitos nessa seção,
+pois alguns vão depender do restante da análise.
+
+Primeiro vamos substituir todos os valores NA's para valores padrões utilizáveis.
+```{r}
+dataset$reviews_per_month[which(is.na(dataset$reviews_per_month))] <- 0
+dataset$name[which(is.na(dataset$name))] <- "NoName"
+dataset$host_name[which(is.na(dataset$host_name))] <- "NoName"
+dataset$last_review[which(is.na(dataset$last_review))] <- "NotReviewed"
+```
+Após isso vamos retirar as variáveis que não ajudam no estudo de preços, como ID's da postagem e anfitrião, nome da postagem, latitude, longitude e etc.
+```{r}
+dataset <- select(dataset, -id, -host_id,-host_name, -name, -last_review, -latitude, -longitude) # Remove colunas não interessantes
+```
+Também vamos alterar o valor Entire home/apt para que não possua "/", pois atrapalha na análise.
+```{r}
+dataset$room_type[which(dataset$room_type == "Entire home/apt")] <- "Entire home"
+```
+Após esses tratamentos iniciais o dataset ficou com essa cara:
+```{r, echo=FALSE}
+datatable(head(dataset), style = "bootstrap4")
+```
+
+## Análise exploratória dos dados {.tabset}
+
+### Análise das variáveis {.tabset}
+Aqui será feita as análises das variáveis de maior interesse e como elas afetam o preço.
+
+#### Preço
+Nessa primeira seção da análise vamos estudar como nossa variável de interesse se comporta na base de dados.
+
+Primeiro visualizamos a distribuição de preços através do histograma.
+```{r}
+# Verifica distribuição dos preços
+hist(dataset$price, main = "Histograma de Preços", xlab = "Preços", ylab = "Frequência")
+```
+
+Podemos ver facilmente que a grande maioria dos preços está abaixo de 1000 dólares, então vamos visualizar o histograma para preços menores que 1000.
+```{r, echo=FALSE}
+hist(dataset$price[dataset$price<1000], main = "Histograma de Preços abaixo de 1000", xlab = "Preços", ylab = "Frequência")
+```
+
+Mais uma vez a grande maioria fica bem abaixo do máximo, tentamos agora para valores menores que 300 dólares.
+```{r, echo=FALSE}
+hist(dataset$price[dataset$price<300], main = "Histograma de Preços abaixo de 300", xlab = "Preços", ylab = "Frequência")
+cat("Quantidade de Aluguéis com preço abaixo de 250 dólares:", length(dataset$price[dataset$price<300]), "\n")
+cat("Quantidade total do dataset: ", length(dataset$price))
+```
+
+Com essa análise podemos ver que apenas uma pequena parte do dataset possui preço acima de 300, então vamos desconsiderar os aluguéis acima desse limiar e valores iguais a 0.
+```{r}
+dataset <- filter(dataset,price<300) # Retira valores acima de 300
+dataset <- filter(dataset,price>0) # Retira valores iguais a 0
+```
+
+#### Bairro
+
+Agora vamos analisar como os aluguéis se comportam levando em consideração o bairro em que estão localizados.
+
+Primeiro iremos verificar a quantidade de aluguéis por bairro em ordem decrescente.
+```{r, include=FALSE}
+neighbourhood.count <- dataset %>% group_by(neighbourhood) %>% summarise(Count=n())
+neighbourhood.count <- neighbourhood.count[order(neighbourhood.count$Count, decreasing = T),]
+colnames(neighbourhood.count) <- c("Bairro", "Qtd")
+
+neighbourhood.mean <- dataset %>% group_by(neighbourhood) %>% summarise(Média=mean(price)) #Manhattan é o bairro mais caro e Bronx o mais barato
+neighbourhood.mean <- neighbourhood.mean[order(neighbourhood.mean$Média, decreasing = T),]
+colnames(neighbourhood.mean) <- c("Bairro", "Média")
+```
+```{r, echo=FALSE, warning=FALSE}
+# Verifica a quantidade alugueis por bairro em ordem decrescente
+kable(neighbourhood.count[0:10,], caption = "Tabela dos 10 Bairros com maior número de aluguéis")
+barplot(neighbourhood.count$Qtd[0:20], 
+        las=2,
+        col = rainbow(10),
+        names.arg = neighbourhood.count$Bairro[0:20],
+        main = "Gráfico da Quantidade de Aluguéis por Bairro (20 Bairros)") #Plota o gráfico
+```
+
+
+Vamos verificar qual bairro tem a maior média de preços.
+```{r, echo=FALSE}
+kable(neighbourhood.mean[0:10,], caption = "Tabela de 10 Bairros com maior média de preços")
+```
+
+Nessa tabela podemos ver que os bairros com as maiores médias de preço não estão entre os 10 bairros com maior número de aluguéis.
+
+#### Burgo
+
+Nova York é dividida em 5 burgos que são divisões admnistrativas em nível de condados, são eles: Bronx, Brooklyn, Manhattan, Queens e Staten Island. Os bairros estudados na seção anterior são distribuídos por essas 5 divisões.
+
+Primeiro vamos fazer a mesma análise dos bairros para os burgos. 
+```{r, include=FALSE}
+neighbourhood_group.count <- dataset %>% group_by(neighbourhood_group) %>% summarise(Count=n()) #Brooklyn e Manhattan juntos possuiem 85% dos alugueis
+colnames(neighbourhood_group.count) <- c("Burgo", "Qtd")
+neighbourhood_group.mean <- dataset %>% group_by(neighbourhood_group) %>% summarise(Mean=mean(price)) #Manhattan é o bairro mais caro e Bronx o mais barato
+colnames(neighbourhood_group.mean) <- c("Burgo", "Média")
+```
+
+```{r, echo=FALSE}
+kable(neighbourhood_group.count, caption = "Tabela de quantidade de aluguéis por burgo")
+```
+Brooklyn e Manhattan juntos possuem 85% dos aluguéis.
+
+```{r, echo=FALSE}
+kable(neighbourhood_group.mean, caption = "Tabela de média de preços por burgo")
+```
+Manhattan é o burgo mais caro e Bronx o mais barato.
+
+#### Tipo de Quarto
+Existem três categorias de aluguel disponível na base de dados, são elas: Entire home, Private room e Shared room.
+
+Nessa seção vamos analisar a distribuição de cada tipo de aluguel por burgo e preço.
+```{r, include=FALSE}
+room_type.count <- dataset %>% group_by(room_type) %>% summarise(Count=n()) # A maioria dos alugueis são de casa inteira ou quartos privados
+colnames(room_type.count) <- c("Tipo de Quarto", "Qtd")
+room_type.mean <- dataset %>% group_by(room_type) %>% summarise(Mean=mean(price)) # Entire home é bem mais caro
+colnames(room_type.mean) <- c("Tipo de Quarto", "Média")
+```
+```{r}
+subset <- dataset %>% select(neighbourhood_group, price, room_type)
+ggplot(subset, aes(x = neighbourhood_group, 
+                     y = price, 
+                     color=room_type)) +
+  geom_point() +
+  labs(title = "Distribuição dos tipos de quartos por preço e bairro")
+```
+```{r, echo=FALSE}
+kable(room_type.count, caption = "Tabela de quantidade de aluguéis por tipo de quarto")
+kable(room_type.mean, caption = "Tabela de média de preços por tipo de quarto")
+```
+
+A partir dessas análises podemos afirmar que a maioria dos aluguéis são de casa inteira ou quartos privados,
+assim como o preço para alugar a casa inteira é bem mais alto como era o esperado.
+
+
+#### Noites mínimas
+
+Noites mínimas é um valor para a quantidade mínima de dias que você precisa alugar o imóvel para ser aceito pelo anfitrião.
+
+```{r, echo=FALSE}
+summary(dataset$minimum_nights)
+```
+O valor máximo está muito distante da média, então vamos analisar se isso é relevante.
+
+```{r, echo=FALSE}
+hist(dataset$minimum_nights[dataset$minimum_nights<30], main = "Histograma de Noites Mínimas abaixo de 30", xlab = "Noites Mínimas", ylab = "Frequência")
+cat("Quantidade de noites mínimas acima de 30 dias:", length(dataset$minimum_nights[dataset$minimum_nights>30]))
+```
+Apenas uma pequena parte do dataset possui noites mínimas acima de 30 dias, então vamos setar o valor máximo de noites mínimas para 30 no dataset.
+```{r}
+dataset$minimum_nights[dataset$minimum_nights>30] <- 30
+```
+
+### Predição de Preços{.tabset}
+
+Para criar esse modelo para predição de presos foi escolhido o método de regressão linear. Regressão linear é o processo de traçar uma reta através dos dados em um diagrama de dispersão. A reta resume esses dados, o que é útil quando fazemos previsões.
+
+#### Matriz de Correlação
+Primeiro vamos dar uma olhada na matriz de correlação das variáveis numéricas.
+```{r}
+cor.matriz <- cor(select(dataset, -neighbourhood, -neighbourhood_group, -room_type), use = "complete.obs") #Retira colunas não numéricas
+round(cor.matriz, 2)
+ggcorrplot(cor.matriz, hc.order = T, lab = T, type = "lower", title = "Matriz de Correlação entre as variáveis numéricas")
+```
+
+Observando a matriz podemos extrair que o número de reviews tem uma relação grande com a quantidade de reviews por mês, porém não tem relação com o preço, também é possível notar
+que quase todas as variáveis exceto o preço tem uma correlação com a disponibilidade 360 dos aluguéis.
+
+Nossa variável de interesse preço tem pouca relação com o restante das variáveis numéricas, então devemos assumir que a maior relação está com o bairro, burgo e tipo de quarto que foram deixadas de fora.
+
+#### Métricas de Avaliação
+Para avaliar nosso modelo foram escolhidas duas métricas, sendo elas: Adjusted-R e RMSE.
+
+Adjusted-R: O coeficiente de determinação, também conhecido de R-Squared, é uma medida de ajuste de um modelo estatístico linear generalizado, como a regressão linear, aos valores observados de uma variável aleatória. O valor varia de 0 e 1, e quanto mais próximo de 1 melhor. Adicionando mais variáveis independentes a um modelo de regressão tende a aumentar o valor do R-Squared, isso faz com os criadores do modelo adicionem ainda mais variáveis independentes com a tentativa de obter um valor maior, isso é chamado de overfitting e pode retornar um valor alto falso. Adjusted-R é usado para determinar o quão confiável a correlação é e o quanto é determinado pela adição de novas variáveis independentes. Ele compensa a adição de novas variáveis independentes e só aumenta se o novo preditor melhora o modelo acima do que seria obtido por probabilidade.
+
+RMSE(root-mean-square error): É o desvio padrão dos resíduos (erros de predição). Resíduos são uma medida de quão longe os pontos de dados da linha de regressão estão; O RMSE é uma medida de quão espalhados são esses resíduos. Em outras palavras, ele informa a concentração dos dados em torno da linha de melhor ajuste. O erro quadrático médio é comumente usado em climatologia, previsão e análise de regressão para verificar os resultados experimentais. Quanto mais próximo de 0 melhor.
+
+Para medir essas métricas foi criado uma função:
+```{r}
+# Função para calcular as métricas RMSE e R-squared
+eval_metrics = function(model, df, predictions, target){
+  resids = df[,target] - predictions
+  resids2 = resids**2
+  N = length(predictions)
+  r2 = as.character(round(summary(model)$r.squared, 2))
+  adj_r2 = as.character(round(summary(model)$adj.r.squared, 2))
+  cat("Adjusted R-squared: ",adj_r2, " ") #Adjusted R-squared
+  cat("RMSE: ",as.character(round(sqrt(sum(resids2)/N), 2))) #RMSE
+}
+```
+#### Treinamento do Modelo
+Agora vamos separar a base de dados em treino (70%) e teste (30%) para treinar nosso modelo de regressão linear.
+
+```{r}
+# Separa os dados em treino e teste
+set.seed(100) 
+
+index = sample(1:nrow(dataset), 0.7*nrow(dataset)) 
+
+train = dataset[index,] # Cria training dataset
+test = dataset[-index,] # Cria test dataset
+
+dim(train)
+dim(test)
+```
+
+Após dividir a base e decidir quais serão as métricas para classificar o modelo, vamos iniciar o treinamento do modelo de regressão linear, vão ser treinados dois modelos, o primeiro excluindo a variável bairro já que ela possui muitos valores diferentes e o segundo incluindo a variável bairro.
+```{r}
+modelo1 <- lm(price ~ neighbourhood_group + room_type + minimum_nights + availability_365, data = train)
+summary(modelo1)
+```
+
+Analisando os coeficientes do modelo 1 podemos ver facilmente que as variáveis burgo e tipo de quarto têm o maior impacto no modelo.
+
+Para treinar o modelo 2 não é possível dividir o dataset em treino e teste já que valores de bairro podem facilmente existir em um e no outro não.
+Treinando o modelo 2 considerando a variável bairro.
+```{r}
+modelo2 <- lm(price ~ neighbourhood_group + neighbourhood + room_type + minimum_nights + availability_365, data = dataset)
+```
+
+
+#### Avaliação do Modelo
+
+Primeiro vamos observar as métricas para a predição utilizando os dados de treino para o modelo 1.
+```{r, warning=FALSE}
+predictions = predict(modelo1, newdata = train)
+eval_metrics(modelo1, train, predictions, target = 'price')
+```
+
+Agora utilizando os dados de teste.
+```{r, warning=FALSE}
+predictions = predict(modelo1, newdata = test)
+eval_metrics(modelo1, test, predictions, target = 'price')
+```
+A partir das métricas podemos observar que o valor do Adjusted R-squared para o modelo 1 utilizando os dados de teste está bem razoável em torno de 50% e com o erro quadrático RMSE de 38.23 que não é tão alto, porém poderia ser melhor.
+
+
+Avaliando o modelo 2 utilizando os dados de bairro no treinamento
+```{r, warning=FALSE}
+predictions = predict(modelo2, newdata = dataset)
+eval_metrics(modelo2, train, predictions, target = 'price')
+```
+Curiosamente o valor do Adjusted R-Squared para o modelo 2 foi maior que o modelo 1 mostrando um desempenho melhor, porém com um erro bem maior de 78.71.
+
+#### Testes de Casos
+
+Vamos testar alguns valores de variáveis no modelo para obter a predição dos preços.
+
+Apenas vamos mudar as variáveis com maior peso no modelo como foi observado nos coeficientes.
+```{r}
+data_test <- data.frame(neighbourhood_group = "Manhattan", room_type= "Entire home", minimum_nights = 10, availability_365 = 365)
+cat("Preço previsto: ", predict.lm(modelo1, data_test), "\n")
+
+data_test <- data.frame(neighbourhood_group = "Manhattan", room_type= "Private room", minimum_nights = 10, availability_365 = 365)
+cat("Preço previsto: ", predict.lm(modelo1, data_test), "\n")
+
+data_test <- data.frame(neighbourhood_group = "Manhattan", room_type= "Shared room", minimum_nights = 10, availability_365 = 365)
+cat("Preço previsto: ", predict.lm(modelo1, data_test), "\n")
+
+data_test <- data.frame(neighbourhood_group = "Bronx", room_type= "Entire home", minimum_nights = 10, availability_365 = 365)
+cat("Preço previsto: ", predict.lm(modelo1, data_test), "\n")
+
+data_test <- data.frame(neighbourhood_group = "Bronx", room_type= "Private room", minimum_nights = 10, availability_365 = 365)
+cat("Preço previsto: ", predict.lm(modelo1, data_test), "\n")
+
+data_test <- data.frame(neighbourhood_group = "Bronx", room_type= "Shared room", minimum_nights = 10, availability_365 = 365)
+cat("Preço previsto: ", predict.lm(modelo1, data_test), "\n")
+```
+```{r, include=FALSE}
+neighbourhood_group.mean <- dataset %>% group_by(neighbourhood_group, room_type) %>% summarise(Mean=mean(price)) #Manhattan é o bairro mais caro e Bronx o mais barato
+colnames(neighbourhood_group.mean) <- c("Burgo", "Tipo de Quarto", "Média")
+```
+```{r}
+kable(neighbourhood_group.mean, caption = "Tabela de média de preço por burgo e tipo de quarto")
+```
+
+Observando e comparando os valores previstos pelo modelo com a média obtida na tabela vemos que o valor que o modelo fornece está sempre próximo a média dos preços para a categoria. O que indica que mesmo com valores razoáveis nas métricas ainda é possível obter um valor para o preço próximo da média para as características do aluguel.
+
+
+```{r}
+data_test <- data.frame(neighbourhood_group = "Manhattan", neighbourhood = "Hell's Kitchen", room_type= "Entire home", minimum_nights = 10, availability_365 = 365)
+cat("Preço previsto: ", predict.lm(modelo1, data_test), "\n")
+
+data_test <- data.frame(neighbourhood_group = "Bronx", neighbourhood = "Allerton", room_type= "Entire home", minimum_nights = 10, availability_365 = 365)
+cat("Preço previsto: ", predict.lm(modelo1, data_test), "\n")
+```
+```{r}
+cat("Preço médio", mean(dataset$price[dataset$neighbourhood == "Hell's Kitchen" & dataset$neighbourhood_group == "Manhattan" & dataset$room_type == "Entire home"]), "\n")
+cat("Preço médio", mean(dataset$price[dataset$neighbourhood == "Allerton" & dataset$neighbourhood_group == "Bronx" & dataset$room_type == "Entire home"]))
+```
+Testando o modelo 2 que inclui os bairros também obteve uma predição não muito diferente da média dos preços para as características escolhidas.
+
+#### Visualização dos Modelos
+
+Para visualizar os dados vamos utilizar o pacote visreg que recebe o modelo e a variável de interesse e plota o relacionamento condicional, controlando as outras variáveis.
+
+Nesses gráficos fica fácil de observar como o preço se comporta isolando apenas a variável de interesse.
+
+Nos dois primeiros gráficos para variáveis não numéricas podemos ver como estão distribuídos os preços dos aluguéis em relação as variáveis isoladas.
+```{r}
+visreg(modelo1, "neighbourhood_group", gg = TRUE) +
+  scale_y_continuous(label = scales::dollar)
+```
+```{r}
+visreg(modelo1, "room_type", gg = TRUE) +
+  scale_y_continuous(label = scales::dollar)
+```
+
+No gráfico para noites mínimas pode-se observar que o valor dos aluguéis cai um pouco quando aumenta a quantidade de noites requeridas (Observar linha azul). Ou seja quanto mais tempo mínimo necessário, menor o valor da diária.
+```{r}
+visreg(modelo1, "minimum_nights", gg = TRUE) +
+  scale_y_continuous(label = scales::dollar)
+```
+
+Já no gráfico de disponibilidade 365 o valor aumenta um pouco baseado na disponibilidade anual, o que faz bastante sentido levando em conta que se o aluguel
+está disponível por mais tempo, maior é a chance de ser alugado.
+```{r}
+visreg(modelo1, "availability_365", gg = TRUE) +
+  scale_y_continuous(label = scales::dollar)
+```
+
+## Conclusões
+
+Este trabalho teve como objetivo analisar os fatores que interferem nos preços dos aluguéis do Airbnb da cidade de Nova York no ano de 2019, afim de treinar um modelo para predição de preços que consiga auxilar nos planejamentos de viagens das pessoas que desejam visitar a cidade. Após a análise podemos afirmar que os fatores que mais interferem nos preços são a localização e o tipo de quarto disponibilizado, sendo Manhattan a localização mais cara e o Bronx a mais barata, também foi possível afirmar que outros fatores também interferem nos preços embora numa taxa muito menor mas que vale a pena destacar.
+
+O modelo treinado mostrou bons resultados de predição, bem próximos a média do preço para as características interessadas. Embora as métricas de avaliação não se mostraram tão boas como foram esperadas.
+
+Como trabalho futuro seria interessante obter os dados do ano de 2020 e utilizar outras técnicas e modelos de predição como Ridge Regression, Lasso Regression, Elastic Net Regression ou Random Forest Regressor, afim de obter melhores resultados nas métricas e passar maior confiança na utilização do modelo para a predição de preços.
+
