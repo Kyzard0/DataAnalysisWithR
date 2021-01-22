@@ -131,10 +131,10 @@ wordcloud(corpus, min.freq = 1, max.words = 60, random.order = F,
 
 ```{r include=FALSE}
 # Autentica API do Twitter
-consumer_key <- 'ijoshXZ38K6aZWOu5Mu9icHOm'
-consumer_secret <- 'GA7n7Ltx7yDwTSBFOMzspEN9RGBIup0AUOG4ijkXlqoaXNmUDQ'
-access_token <- '1616525624-ZiKHRhHKUjella6iGdrya4BLIJyBSzXBEJQIaff'
-access_secret <- '9RcdboV4utBeZT6h5LRyXkuwGgSXsUKVmEgRjpOw6pEVC'
+consumer_key <- '***'
+consumer_secret <- '****'
+access_token <- '******'
+access_secret <- '******'
 setup_twitter_oauth(consumer_key, consumer_secret, access_token, access_secret)
 
 ```
